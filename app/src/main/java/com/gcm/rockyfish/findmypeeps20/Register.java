@@ -6,17 +6,23 @@ import org.apache.http.message.BasicNameValuePair;
 import org.json.JSONException;
 import org.json.JSONObject;
 import android.app.Activity;
+import android.app.Dialog;
 import android.app.ProgressDialog;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.PorterDuff;
 import android.graphics.drawable.ColorDrawable;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.Handler;
 import android.support.v7.app.ActionBar;
+import android.support.v7.app.AlertDialog;
+import android.telephony.TelephonyManager;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.widget.Button;
@@ -26,28 +32,38 @@ import android.widget.Toast;
 import com.gcm.rockyfish.findmypeeps20.JSONParser;
 
 public class Register extends Activity implements OnClickListener{
-    private EditText userreg, passreg, emailreg, verpasser;
+    private EditText userreg, passreg, emailreg, verpasser, phone, code, carrier;
     GPSTracker gps = new GPSTracker(this);
-    private Button bRegister;
+    private Button bRegister, bverif;
     TabLayout setupLogin = new TabLayout();
     // Progress Dialog
     private ProgressDialog pDialog;
     int verif = 0;
+    AlertDialog alert2;
     // JSON parser class
     JSONParser jsonParser = new JSONParser();
-    private static final String LOGIN_URL = "http://skyrealmstudio.com/cgi-bin/register.py";
+    private static final String LOGIN_URL = "http://skyrealmstudio.com/cgi-bin/newregister.py";
+    private static final String VERIFY_URL = "http://skyrealmstudio.com/cgi-bin/verifyaccount.py";
     private static final String TAG_SUCCESS = "success";
     private static final String TAG_MESSAGE = "message";
+
+    String user;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
         setContentView(R.layout.activity_register);
+
+        //Assign variables
         userreg = (EditText)findViewById(R.id.user);
         passreg = (EditText)findViewById(R.id.pass);
         emailreg = (EditText)findViewById(R.id.email);
         verpasser = (EditText) findViewById(R.id.verpass);
-        bRegister = (Button)findViewById(R.id.registerbutton   );
+        phone = (EditText) findViewById(R.id.phone);
+        carrier = (EditText) findViewById(R.id.carrier2);
+        bRegister = (Button)findViewById(R.id.registerbutton);
         bRegister.setOnClickListener(this);
+        carrier.setAlpha(0.0f);
 
         String pass = passreg.getText().toString();
         String Verify = verpasser.getText().toString();
@@ -89,7 +105,6 @@ public class Register extends Activity implements OnClickListener{
     public void onBackPressed() {
 
         Intent ii = new Intent(Register.this,Login.class);
-        // this finish() method is used to tell android os that we are done with current //activity now! Moving to other activity
         finish();
         startActivity(ii);
     }
@@ -100,10 +115,20 @@ public class Register extends Activity implements OnClickListener{
          * */
         boolean failure = false;
 
+        //Get the mobile Carrier Name
+        TelephonyManager manager = (TelephonyManager)
+                getSystemService(Context.TELEPHONY_SERVICE);
+        String carrierName = manager.getNetworkOperatorName();
+
+
+
         String p = passreg.getText().toString();
         String u = userreg.getText().toString();
         String v = verpasser.getText().toString();
         String e = emailreg.getText().toString();
+        String ph = phone.getText().toString();
+        String c = carrierName;
+
         @Override
         protected void onPreExecute() {
             super.onPreExecute();
@@ -121,14 +146,17 @@ public class Register extends Activity implements OnClickListener{
 
 
 
+            int success;
 
-                int success;
                 String pass = p;
-                String user = u;
+                user = u;
                 String very = v;
                 String email= e;
+                String Phone = ph;
+                String Carrier = c;
 
-            if (pass.matches("") || user.matches("") || email.matches("") || very.matches("")) {
+
+            if (pass.matches("") || user.matches("") || email.matches("") || very.matches("") || Phone.matches("") || Carrier.matches("")) {
                 return "One or more fields are empty!";
             }else{
 
@@ -139,6 +167,8 @@ public class Register extends Activity implements OnClickListener{
                     params.add(new BasicNameValuePair("user", user));
                     params.add(new BasicNameValuePair("pass", pass));
                     params.add(new BasicNameValuePair("email", email));
+                    params.add(new BasicNameValuePair("phone", Phone));
+                    params.add(new BasicNameValuePair("carry", Carrier));
 
 
 
@@ -150,10 +180,12 @@ public class Register extends Activity implements OnClickListener{
                     // success tag for json
                     success = json.getInt(TAG_SUCCESS);
                     if (success == 1) {
-                        Intent ii = new Intent(Register.this, Login.class);
-                        finish();
+                        verif = success;
+
+                        //Intent ii = new Intent(Register.this, Login.class);
+                        //finish();
                         // this finish() method is used to tell android os that we are done with current //activity now! Moving to other activity
-                        startActivity(ii);
+                        //startActivity(ii);
                         return json.getString(TAG_MESSAGE);
                     } else {
 
@@ -176,8 +208,108 @@ public class Register extends Activity implements OnClickListener{
 
             pDialog.dismiss();
             if (message != null){
-                Toast.makeText(Register.this, message, Toast.LENGTH_LONG).show();
+
+                if (verif == 1){
+                    LayoutInflater layoutInflater = LayoutInflater.from(Register.this);
+                    AlertDialog.Builder Built = new AlertDialog.Builder(Register.this);
+                    View promptViewer = layoutInflater.inflate(R.layout.popout_verify, null);
+                    bverif = (Button) promptViewer.findViewById(R.id.BVerify);
+                    code = (EditText) promptViewer.findViewById(R.id.VerifyCode);
+                    bverif.setOnClickListener(new OnClickListener() {
+                        @Override
+                        public void onClick(View view) {
+                            new AttemptVerify().execute();
+                        }
+                    });
+                    Built.setView(promptViewer);
+                    alert2 = Built.create();
+                    alert2.show();
+                }else{
+                    Toast.makeText(Register.this, message, Toast.LENGTH_LONG).show();
+                }
             }
         }
     }
+
+    //class sends post and recieves response
+    class AttemptVerify extends AsyncTask<String, String, String> {
+        int verify;
+        String coder;
+        @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+            pDialog = new ProgressDialog(Register.this);
+            pDialog.setMessage("Attempting to Verify...");
+            pDialog.setIndeterminate(false);
+            pDialog.setCancelable(true);
+            coder = code.getText().toString();
+            pDialog.show();
+
+        }
+
+        @Override
+        protected String doInBackground(String... args) {
+
+            // create tags
+            int success;
+            String verify = coder;
+            boolean failure = false;
+
+
+            try {
+
+
+                List<NameValuePair> params = new ArrayList<NameValuePair>();
+                params.add(new BasicNameValuePair("username", user));
+                params.add(new BasicNameValuePair("verify", verify));
+
+
+                JSONObject json = jsonParser.makeHttpRequest(
+                        VERIFY_URL, "POST", params);
+
+                // set up tags for json
+                success = json.getInt(TAG_SUCCESS);
+
+
+                if (success == 1)
+                {
+                    alert2.cancel();
+                    Intent ii = new Intent(Register.this, Login.class);
+                    finish();
+                    startActivity(ii);
+                    return json.getString(TAG_MESSAGE);
+                } else
+                {
+
+                    return json.getString(TAG_MESSAGE);
+
+                }
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+
+            return null;
+        }
+
+        public void timerDelayRemoveDialog(long time, final Dialog d){
+            new Handler().postDelayed(new Runnable() {
+                public void run() {
+                    d.dismiss();
+                    Toast.makeText(Register.this, "Verification timed out. Try again later.", Toast.LENGTH_LONG).show();
+                }
+            }, time);
+        }
+
+        protected void onPostExecute(String message) {
+            long timeout = 8000;
+            pDialog.dismiss();
+            if (message != null) {
+                Toast.makeText(Register.this, message, Toast.LENGTH_LONG).show();
+
+            }
+
+
+        }
+    }
 }
+

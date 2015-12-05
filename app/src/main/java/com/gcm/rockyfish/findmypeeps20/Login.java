@@ -1,62 +1,58 @@
 package com.gcm.rockyfish.findmypeeps20;
-import java.io.BufferedReader;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.util.ArrayList;
-import java.util.List;
-import org.apache.http.NameValuePair;
-import org.apache.http.message.BasicNameValuePair;
-import org.json.JSONException;
-import org.json.JSONObject;
-
-import android.app.ActionBar;
-import android.app.Activity;
-import android.app.AlertDialog;
 import android.app.Dialog;
-import android.app.NotificationManager;
 import android.app.ProgressDialog;
-import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.graphics.Color;
-import android.graphics.drawable.ColorDrawable;
 import android.os.AsyncTask;
 import android.os.Bundle;
-import android.support.v4.app.NotificationCompat;
-import android.util.Log;
+import android.os.Handler;
+import android.support.v7.app.AlertDialog;
+import android.support.v7.app.AppCompatActivity;
+import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.View.OnClickListener;
-import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.apache.http.NameValuePair;
+import org.apache.http.message.BasicNameValuePair;
+import org.json.JSONException;
+import org.json.JSONObject;
 
-public class Login extends Activity implements OnClickListener, View.OnTouchListener {
+import java.util.ArrayList;
+import java.util.List;
+
+
+public class Login extends AppCompatActivity implements OnClickListener {
     //Declare all variables and classes
-    private EditText users, pass;
-    private Button bLogin, bRegister;
-    private TextView tvforgot;
+    private EditText users, pass, code, usaname;
+    private Button bLogin, bRegister, bForgot, bverif, resphone,resemail;
+    private TextView useremailforg;
+    private TextView tvforgot, resendverif;
     private boolean Regist = false;
     // Progress Dialog
     private ProgressDialog pDialog;
     TabLayout setupLogin = new TabLayout();
     // JSON parser class declared
     JSONParser jsonParser = new JSONParser();
-    private static final String LOGIN_URL = "http://www.skyrealmstudio.com/cgi-bin/login.py";
+    private static final String LOGIN_URL = "http://www.skyrealmstudio.com/cgi-bin/new_login.py";
+    private static final String VERIFY_URL = "http://skyrealmstudio.com/cgi-bin/verifyaccount.py";
+    private static final String Forgot_URL = "http://skyrealmstudio.com/cgi-bin/forgot.py";
+    private static final String Email_URL = "http://skyrealmstudio.com/cgi-bin/resendemail.py";
+    private static final String Phone_URL = "http://skyrealmstudio.com/cgi-bin/resendphone.py";
     private static final String TAG_SUCCESS = "success";
     private static final String TAG_MESSAGE = "message";
     private static final String TAG_ID = "number";
+    private static final String TAG_noverif = "noverify";
+    private static final String TAG_username = "username";
     private static final String TAG_FIRSTLOG = "firstlog";
     private String Number;
     private String First;
+    AlertDialog alert, alert2, alert3;
     private String username;
     private String password;
     private Toast backtoast;
@@ -69,11 +65,9 @@ public class Login extends Activity implements OnClickListener, View.OnTouchList
 
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-
+    public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_login);
-
         //set variables to xml fields
         users = (EditText) findViewById(R.id.username);
         pass = (EditText) findViewById(R.id.password);
@@ -83,7 +77,56 @@ public class Login extends Activity implements OnClickListener, View.OnTouchList
         bRegister = (Button) findViewById(R.id.registerlog);
         bRegister.setOnClickListener(this);
         tvforgot = (TextView) findViewById(R.id.forgotbut);
-        tvforgot.setOnTouchListener(this);
+        resendverif = (TextView) findViewById(R.id.rsndverification);
+        resendverif.setOnClickListener(new OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                LayoutInflater layoutInflater = LayoutInflater.from(Login.this);
+                AlertDialog.Builder build = new AlertDialog.Builder(Login.this);
+                View promptView = layoutInflater.inflate(R.layout.popout_resendverification, null);
+                resphone = (Button) promptView.findViewById(R.id.VerifPhone);
+                resemail = (Button) promptView.findViewById(R.id.VerifEmail);
+                usaname = (EditText) promptView.findViewById(R.id.Reuser);
+                resphone.setOnClickListener(new OnClickListener() {
+                    @Override
+                    public void onClick(View view) {
+                        new Attemptphone().execute();
+                    }
+                });
+                resemail.setOnClickListener(new OnClickListener() {
+                    @Override
+                    public void onClick(View view) {
+                        new Attemptemail().execute();
+                    }
+                });
+
+                build.setView(promptView);
+                alert3 = build.create();
+                alert3.show();
+            }
+        });
+
+        tvforgot.setOnClickListener(new OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                LayoutInflater layoutInflater = LayoutInflater.from(Login.this);
+                AlertDialog.Builder builder = new AlertDialog.Builder(Login.this);
+                View promptView = layoutInflater.inflate(R.layout.activity_forgot, null);
+                bForgot = (Button) promptView.findViewById(R.id.forgotbutton);
+                useremailforg = (EditText) promptView.findViewById(R.id.forgotuser);
+                bForgot.setOnClickListener(new OnClickListener() {
+                    @Override
+                    public void onClick(View view) {
+                        new Attemptreset().execute();
+                    }
+                });
+
+                builder.setView(promptView);
+                alert = builder.create();
+                alert.show();
+            }
+        });
+
         saveLoginCheckBox = (CheckBox) findViewById(R.id.remember);
         loginPreferences = getSharedPreferences("loginPrefs", MODE_PRIVATE);
         loginPrefsEditor = loginPreferences.edit();
@@ -121,23 +164,8 @@ public class Login extends Activity implements OnClickListener, View.OnTouchList
         } else {
             saveLoginCheckBox.setChecked(false);
         }
-
     }
 
-    @Override
-    public boolean onTouch(View v, MotionEvent event) {
-        switch (v.getId()) {
-            //handle if forgot is pressed
-            case R.id.forgotbut:
-                Intent ii = new Intent(Login.this, Forgot.class);
-                finish();
-                startActivity(ii);
-                break;
-            default:
-                break;
-        }
-        return true;
-    }
 
     @Override
     public void onClick(View v) {
@@ -193,15 +221,17 @@ public class Login extends Activity implements OnClickListener, View.OnTouchList
 
     }
 
-    //class sends post and recieves response
-    class AttemptLogin extends AsyncTask<String, String, String> {
-
-
+    class Attemptreset extends AsyncTask<String, String, String> {
+        /**
+         * Before starting background thread Show Progress Dialog
+         * */
+        boolean failure = false;
+        String use = useremailforg.getText().toString();
         @Override
         protected void onPreExecute() {
             super.onPreExecute();
             pDialog = new ProgressDialog(Login.this);
-            pDialog.setMessage("Attempting to login...");
+            pDialog.setMessage("Resetting...");
             pDialog.setIndeterminate(false);
             pDialog.setCancelable(true);
             pDialog.show();
@@ -211,6 +241,204 @@ public class Login extends Activity implements OnClickListener, View.OnTouchList
         protected String doInBackground(String... args) {
             // TODO Auto-generated method stub
             // here Check for success tag
+
+
+            int success;
+
+            String ue = use;
+
+
+            try {
+
+                List<NameValuePair> params = new ArrayList<NameValuePair>();
+                params.add(new BasicNameValuePair("useremail", ue));
+
+                JSONObject json = jsonParser.makeHttpRequest(
+                        Forgot_URL, "POST", params);
+
+                // checking  log for json response
+
+                // success tag for json
+                success = json.getInt(TAG_SUCCESS);
+                if (success == 1) {
+                    alert.cancel();
+                    return json.getString(TAG_MESSAGE);
+                }else{
+
+                    return json.getString(TAG_MESSAGE);
+
+                }
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+
+            return null;
+        }
+        /**
+         * Once the background process is done we need to  Dismiss the progress dialog asap
+         * **/
+        protected void onPostExecute(String message) {
+
+            pDialog.dismiss();
+            if (message != null){
+                Toast.makeText(Login.this, message, Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+
+
+
+    class Attemptphone extends AsyncTask<String, String, String> {
+        /**
+         * Before starting background thread Show Progress Dialog
+         * */
+        boolean failure = false;
+        String usernames = usaname.getText().toString();
+        @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+            pDialog = new ProgressDialog(Login.this);
+            pDialog.setMessage("Resending...");
+            pDialog.setIndeterminate(false);
+            pDialog.setCancelable(true);
+            pDialog.show();
+        }
+
+        @Override
+        protected String doInBackground(String... args) {
+            // TODO Auto-generated method stub
+            // here Check for success tag
+
+
+            int success;
+
+            String ue = usernames;
+
+
+            try {
+
+                List<NameValuePair> params = new ArrayList<NameValuePair>();
+                params.add(new BasicNameValuePair("user", ue));
+
+                JSONObject json = jsonParser.makeHttpRequest(
+                        Phone_URL, "POST", params);
+
+                // checking  log for json response
+
+                // success tag for json
+                success = json.getInt(TAG_SUCCESS);
+                if (success == 1) {
+                    alert3.cancel();
+                    return json.getString(TAG_MESSAGE);
+                }else{
+
+                    return json.getString(TAG_MESSAGE);
+
+                }
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+
+            return null;
+        }
+        /**
+         * Once the background process is done we need to  Dismiss the progress dialog asap
+         * **/
+        protected void onPostExecute(String message) {
+
+            pDialog.dismiss();
+            if (message != null){
+                Toast.makeText(Login.this, message, Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+
+
+    class Attemptemail  extends AsyncTask<String, String, String> {
+        /**
+         * Before starting background thread Show Progress Dialog
+         * */
+        boolean failure = false;
+        String usernames = usaname.getText().toString();
+        @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+            pDialog = new ProgressDialog(Login.this);
+            pDialog.setMessage("Resending...");
+            pDialog.setIndeterminate(false);
+            pDialog.setCancelable(true);
+            pDialog.show();
+        }
+
+        @Override
+        protected String doInBackground(String... args) {
+            // TODO Auto-generated method stub
+            // here Check for success tag
+
+
+            int success;
+
+            String ue = usernames;
+
+
+            try {
+
+                List<NameValuePair> params = new ArrayList<NameValuePair>();
+                params.add(new BasicNameValuePair("user", ue));
+
+                JSONObject json = jsonParser.makeHttpRequest(
+                        Email_URL, "POST", params);
+
+                // checking  log for json response
+
+                // success tag for json
+                success = json.getInt(TAG_SUCCESS);
+                if (success == 1) {
+                    alert3.cancel();
+                    return json.getString(TAG_MESSAGE);
+                }else{
+
+                    return json.getString(TAG_MESSAGE);
+
+                }
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+
+            return null;
+        }
+        /**
+         * Once the background process is done we need to  Dismiss the progress dialog asap
+         * **/
+        protected void onPostExecute(String message) {
+
+            pDialog.dismiss();
+            if (message != null){
+                Toast.makeText(Login.this, message, Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+
+
+    //class sends post and recieves response
+    class AttemptLogin extends AsyncTask<String, String, String> {
+        int verify;
+
+        @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+            pDialog = new ProgressDialog(Login.this);
+            pDialog.setMessage("Attempting to login...");
+            pDialog.setIndeterminate(false);
+            pDialog.setCancelable(true);
+            pDialog.show();
+
+        }
+
+        @Override
+        protected String doInBackground(String... args) {
+
+            // create tags
             int success;
 
             boolean failure = false;
@@ -226,17 +454,18 @@ public class Login extends Activity implements OnClickListener, View.OnTouchList
                 JSONObject json = jsonParser.makeHttpRequest(
                         LOGIN_URL, "POST", params);
 
-                // checking  log for json response
-
-                // success tag for json
+                // set up tags for json
                 success = json.getInt(TAG_SUCCESS);
+                verify = json.getInt(TAG_noverif);
 
 
-                if (success == 1) {
+                if (success == 1 && verify == 1)
+                {
+                    username = json.getString(TAG_username);
                     First = json.getString(TAG_FIRSTLOG);
                     Number = json.getString(TAG_ID);
                     Intent ii = new Intent(Login.this, TabLayout.class);
-                    ii.putExtra("username", username.toLowerCase());
+                    ii.putExtra("username", username);
                     ii.putExtra("Number", Number);
                     ii.putExtra("First",First);
 
@@ -245,7 +474,8 @@ public class Login extends Activity implements OnClickListener, View.OnTouchList
                     startActivity(ii);
 
                     return json.getString(TAG_MESSAGE);
-                } else {
+                } else
+                {
 
                     return json.getString(TAG_MESSAGE);
 
@@ -257,16 +487,123 @@ public class Login extends Activity implements OnClickListener, View.OnTouchList
             return null;
         }
 
-
+        public void timerDelayRemoveDialog(long time, final Dialog d){
+            new Handler().postDelayed(new Runnable() {
+                public void run() {
+                    d.dismiss();
+                    Toast.makeText(Login.this, "Login timed out. Try again later.", Toast.LENGTH_LONG).show();
+                }
+            }, time);
+        }
 
         protected void onPostExecute(String message) {
+            long timeout = 8000;
+            pDialog.dismiss();
+            if (message != null) {
+                if(verify != 1)
+                {
+                    LayoutInflater layoutInflater = LayoutInflater.from(Login.this);
+                    AlertDialog.Builder Built = new AlertDialog.Builder(Login.this);
+                    View promptViewer = layoutInflater.inflate(R.layout.popout_verify, null);
+                    bverif = (Button) promptViewer.findViewById(R.id.BVerify);
+                    code = (EditText) promptViewer.findViewById(R.id.VerifyCode);
 
+
+
+                    bverif.setOnClickListener(new OnClickListener() {
+                        @Override
+                        public void onClick(View view) {
+                            new AttemptVerify().execute();
+                        }
+                    });
+                    Built.setView(promptViewer);
+                    alert2 = Built.create();
+                    alert2.show();
+                }else{
+                    Toast.makeText(Login.this, message, Toast.LENGTH_LONG).show();}
+
+            }
+
+
+        }
+    }
+
+
+
+
+    //class sends post and recieves response
+    class AttemptVerify extends AsyncTask<String, String, String> {
+        int verify;
+        String coder;
+        @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+            pDialog = new ProgressDialog(Login.this);
+            pDialog.setMessage("Attempting to Verify...");
+            pDialog.setIndeterminate(false);
+            pDialog.setCancelable(true);
+            coder = code.getText().toString();
+            pDialog.show();
+
+        }
+
+        @Override
+        protected String doInBackground(String... args) {
+
+            // create tags
+            int success;
+            String verify = coder;
+            boolean failure = false;
+
+
+            try {
+
+
+                List<NameValuePair> params = new ArrayList<NameValuePair>();
+                params.add(new BasicNameValuePair("username", username));
+                params.add(new BasicNameValuePair("verify", verify));
+
+
+                JSONObject json = jsonParser.makeHttpRequest(
+                        VERIFY_URL, "POST", params);
+
+                // set up tags for json
+                success = json.getInt(TAG_SUCCESS);
+
+
+                if (success == 1)
+                {
+                    alert2.cancel();
+                    return json.getString(TAG_MESSAGE);
+                } else
+                {
+
+                    return json.getString(TAG_MESSAGE);
+
+                }
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+
+            return null;
+        }
+
+        public void timerDelayRemoveDialog(long time, final Dialog d){
+            new Handler().postDelayed(new Runnable() {
+                public void run() {
+                    d.dismiss();
+                    Toast.makeText(Login.this, "Verification timed out. Try again later.", Toast.LENGTH_LONG).show();
+                }
+            }, time);
+        }
+
+        protected void onPostExecute(String message) {
             pDialog.dismiss();
             if (message != null) {
                 Toast.makeText(Login.this, message, Toast.LENGTH_LONG).show();
 
-
             }
+
 
         }
     }
